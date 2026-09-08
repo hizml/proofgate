@@ -81,6 +81,16 @@ test('NUM：日期/时刻数字不参与核对（真稿翻车回归）', () => {
   assert.equal(r.items.filter((i) => i.code === 'NUM-001').length, 0);
 });
 
+test('NUM：量词短语不是指标（ai-newsroom 真稿回归）', () => {
+  const r = num.run(docOf('最近两篇稿子的初审分数，一篇 38，一篇 58——58 那篇被要求重排。'), cfg());
+  assert.equal(r.items.filter((i) => i.code === 'NUM-001').length, 0);
+});
+
+test('SENS：「终极」不在默认词表（agent-layers 真稿回归）', () => {
+  const r = sens.run(docOf('文件系统是终极上下文，会话会死，文件不死。'), cfg());
+  assert.equal(r.items.length, 0);
+});
+
 test('CASE：Claude/claude 大小写不一致', () => {
   const r = caseRule.run(docOf('Claude 很强，claude 也很强，Claude 万岁'), cfg());
   assert.ok(codes(r.items).includes('CASE-001'));

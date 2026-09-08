@@ -16,6 +16,8 @@ const CHENG_RE = /([一二两三四五六七八九十]{1,3})\s*成/g;
 const TIME_AFTER_RE = /^\s*(?:年|月|日|号|点|分|秒|时|周|届|季度)/;
 // 对象猜出来是时间词本身的也排除（「每月 320 万」的「每月」）
 const TIME_OBJECTS = new Set(['月', '年', '日', '周', '点', '号', '时', '每晚', '每天', '每月', '每年', '当日', '当天', '次', '倍', '篇', '条', '行']);
+// 对象以量词/结构词收尾 = 分类短语不是指标（「一篇 38」「下一步 3 个」），两处数字本就不是同一指标
+const CLASSIFIER_TAILS = new Set(['篇', '条', '只', '个', '位', '名', '次', '款', '项', '份', '台', '家', '轮', '层', '步', '章', '节', '幕', '课', '题', '段', '字', '词', '句', '分', '秒', '米', '元', '块', '岁']);
 
 // 出现在数字前的动词/介词，剥掉后剩下的才像指标名
 const STRIP_TAIL = ['突破', '达到', '增长至', '增长了', '增长', '上涨至', '上涨', '下降至', '下降', '升至', '降至', '高达', '超过', '约为', '约', '近', '超', '为', '是', '有', '达', '共', '了'];
@@ -51,6 +53,7 @@ function guessObject(before) {
   if (!m) return null;
   let obj = m[1];
   if (TIME_OBJECTS.has(obj)) return null;
+  if (CLASSIFIER_TAILS.has(obj[obj.length - 1])) return null;
   let changed = true;
   while (changed) {
     changed = false;
