@@ -76,6 +76,11 @@ test('NUM：同一指标矛盾数值报警，一致不报', () => {
   assert.equal(good.items.filter((i) => i.code === 'NUM-001').length, 0);
 });
 
+test('NUM：日期/时刻数字不参与核对（真稿翻车回归）', () => {
+  const r = num.run(docOf('从现在起到 9 月 20 号，每晚 23 点到早上 9 点，9月30日后恢复。每小时 10 分钟能干很多事，每周 3 次。'), cfg());
+  assert.equal(r.items.filter((i) => i.code === 'NUM-001').length, 0);
+});
+
 test('CASE：Claude/claude 大小写不一致', () => {
   const r = caseRule.run(docOf('Claude 很强，claude 也很强，Claude 万岁'), cfg());
   assert.ok(codes(r.items).includes('CASE-001'));

@@ -12,6 +12,11 @@ const ARAB_RE = new RegExp(`(\\d[\\d,]*(?:\\.\\d+)?)\\s*(?:(${UNIT_ALT}))?\\s*([
 const BAI_RE = /百分之\s*([\d.]+)/g;
 const CHENG_RE = /([一二两三四五六七八九十]{1,3})\s*成/g;
 
+// 数字后面直接跟时间单位 = 日期/时刻，不是指标（「9 月 20 号」「每晚 23 点」）
+const TIME_AFTER_RE = /^\s*(?:年|月|日|号|点|分|秒|时|周|届|季度)/;
+// 对象猜出来是时间词本身的也排除（「每月 320 万」的「每月」）
+const TIME_OBJECTS = new Set(['月', '年', '日', '周', '点', '号', '时', '每晚', '每天', '每月', '每年', '当日', '当天', '次', '倍', '篇', '条', '行']);
+
 // 出现在数字前的动词/介词，剥掉后剩下的才像指标名
 const STRIP_TAIL = ['突破', '达到', '增长至', '增长了', '增长', '上涨至', '上涨', '下降至', '下降', '升至', '降至', '高达', '超过', '约为', '约', '近', '超', '为', '是', '有', '达', '共', '了'];
 // 指标名尾部的泛称，剥掉让「月活用户」「开发者月活」都能归到「月活」
@@ -45,6 +50,7 @@ function guessObject(before) {
   const m = tail.match(/([\u4e00-\u9fff]{1,8})\s*$/);
   if (!m) return null;
   let obj = m[1];
+  if (TIME_OBJECTS.has(obj)) return null;
   let changed = true;
   while (changed) {
     changed = false;
@@ -73,6 +79,11 @@ export default {
       ARAB_RE.lastIndex = 0;
       while ((m = ARAB_RE.exec(text))) {
         if (!m[1]) continue;
+        const end = m.index + m[0].length;
+        if (TIME_AFTER_RE.test(text.slice(end))) {
+          ARAB_RE.lastIndex = end; // 日期/时刻数字不参与指标核对
+          continue;
+        }
         const isPercent = Boolean(m[3]);
         const canon = canonical(m[1], m[2], isPercent);
         if (canon === null) continue;
