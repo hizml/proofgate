@@ -48,12 +48,13 @@ proofgate doctor                               # 引擎自检（埋雷必报+干
 | FACT-003 | 证伪断言（找到反证） | 硬伤 |
 | LOGIC-001 | 逻辑矛盾候选 | 建议 |
 | FACT-ERR | verdict 契约违规 | 硬伤 |
+| `*-ERR` | 规则运行时崩溃（引擎级，跑 doctor 排查） | 警告 |
 
 退出码：`0` 通过，`1` 存在硬伤，`2` 用法/运行错误。
 
 ## 配置
 
-在文章同目录或上层放 `proofgate.config.json`（或 `--config` 指定）：
+在文章同目录、当前工作目录或 `~/.proofgate/` 放 `proofgate.config.json`（或 `--config` 指定；指定路径不存在/文件损坏/形状不对 = exit 2 显式失败，不静默回退）：
 
 ```json
 {
@@ -68,8 +69,10 @@ proofgate doctor                               # 引擎自检（埋雷必报+干
 
 ## 路线
 
-- v0.1（当前）：9 条确定性规则 + 双格式回执 ✅
-- v0.2（当前）：语义层 FACT/LOGIC（verdict 契约 + `--facts` 合并 + `facts-template`）✅
+- v0.1：9 条确定性规则 + 双格式回执 ✅
+- v0.2：语义层 FACT/LOGIC（verdict 契约 + `--facts` 合并 + `facts-template`）✅
+- v0.2.3：代码评审加固（frontmatter 假 PASS / 括号 URL / SSRF 防护）✅
+- v0.3.0（当前）：评审 🟡 清零——显式失败取代一切静默降级（配置/CLI 参数/契约校验对齐）✅
 - Phase 2：skill 分发（`npx skills add`）、网页版、GitHub Action、图表数字 OCR 交叉核对
 
 ## 开发

@@ -56,7 +56,7 @@ export default {
     const concurrency = cfg.link?.concurrency ?? 8;
     const fetchImpl = ctx.fetchImpl;
     const headers = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) proofgate/0.2 (+link-check)',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) proofgate (+link-check)',
       Accept: '*/*',
     };
 

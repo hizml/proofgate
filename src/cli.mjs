@@ -6,7 +6,7 @@ import { loadConfig, DEFAULT_CONFIG } from './config.mjs';
 import { RULES } from './rules/index.mjs';
 import { buildReceipt, renderMarkdown } from './receipt.mjs';
 
-export const VERSION = '0.2.3';
+export const VERSION = '0.3.0';
 
 const HELP = `proofgate v${VERSION} — 中文内容出厂质检员
 用法:
@@ -33,17 +33,42 @@ export async function runCheck(argv) {
   let only = null;
   let factsPath = null;
 
+  // 缺参数/多文件/未知规则名全部显式失败——静默吞参数会悄悄跳过检查（--facts 缺参=语义层没跑还 PASS）
+  const valueAfter = (idx) => {
+    const v = argv[idx + 1];
+    return v === undefined || v.startsWith('-') ? null : v;
+  };
+
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === 'check') continue;
     if (a === '--json') json = true;
     else if (a === '--no-net') noNet = true;
-    else if (a === '--config') configPath = argv[++i];
-    else if (a === '--only') only = new Set(argv[++i].split(',').map((s) => s.trim()));
-    else if (a === '--facts') factsPath = argv[++i];
+    else if (a === '--config') {
+      configPath = valueAfter(i);
+      if (configPath === null) { console.error(`${a} 需要一个参数值`); return 2; }
+      i++;
+    }
+    else if (a === '--only') {
+      const v = valueAfter(i);
+      if (v === null) { console.error(`${a} 需要一个参数值`); return 2; }
+      i++;
+      const keys = v.split(',').map((s) => s.trim()).filter(Boolean);
+      if (!keys.length) { console.error('--only 不能为空'); return 2; }
+      const known = new Set(RULES.map((r) => r.key));
+      const unknown = keys.filter((k) => !known.has(k));
+      if (unknown.length) { console.error(`--only 含未知规则: ${unknown.join(',')}（可用: ${[...known].join(',')}）`); return 2; }
+      only = new Set(keys);
+    }
+    else if (a === '--facts') {
+      factsPath = valueAfter(i);
+      if (factsPath === null) { console.error(`${a} 需要一个参数值`); return 2; }
+      i++;
+    }
     else if (a === '--version' || a === '-v') { console.log(`proofgate ${VERSION}`); return 0; }
     else if (a === '--help' || a === '-h') { console.log(HELP); return 0; }
     else if (a.startsWith('-')) { console.error(`未知参数: ${a}`); return 2; }
+    else if (file) { console.error(`一次只查一个文件，收到多个: ${file} 和 ${a}`); return 2; }
     else file = a;
   }
   if (!file) { console.error(HELP); return 2; }
@@ -68,9 +93,16 @@ export async function runCheck(argv) {
 
   const absFile = path.resolve(file);
   const started = Date.now();
-  const { config, source } = loadConfig(configPath, path.dirname(absFile));
+  let config;
+  let source;
+  try {
+    ({ config, source } = loadConfig(configPath, path.dirname(absFile)));
+  } catch (e) {
+    console.error(e.message);
+    return 2;
+  }
   const doc = parseMarkdown(raw, absFile);
-  const ctx = { fetchImpl: (...args) => fetch(...args), noNet, verdict };
+  const ctx = { fetchImpl: defaultFetch, noNet, verdict };
 
   const results = await runAllRules(doc, config, ctx, only);
 
@@ -91,6 +123,8 @@ export async function runCheck(argv) {
 }
 
 // 单条规则崩了不拖垮整张回执：变成 {RULE}-ERR 警告项，流水线看得见、其他规则照跑
+const defaultFetch = (...args) => fetch(...args);
+
 async function runAllRules(doc, config, ctx, only = null) {
   const results = [];
   for (const rule of RULES) {
@@ -125,7 +159,7 @@ async function doctor() {
   const loaded = RULES.length >= 10 && RULES.every((r) => typeof r.run === 'function');
   lines.push(`${mark(loaded)} 规则加载 ${RULES.length} 条（机械 9 + 语义 1）`);
 
-  const ctx = { fetchImpl: (...a) => fetch(...a), noNet: true, verdict: null };
+  const ctx = { fetchImpl: defaultFetch, noNet: true, verdict: null };
 
   try {
     const fixture = fileURLToPath(new URL('../test/fixtures/article-with-issues.md', import.meta.url));

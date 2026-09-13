@@ -8,10 +8,12 @@ export function buildReceipt(meta, results) {
   const passes = results
     .filter((r) => r.pass)
     .map((r) => ({ rule: r.rule, summary: r.pass }));
+  // 通过数只数零违规的规则；带违规的规则小结在 passes 里是统计信息，不算"通过"
+  const passCount = results.filter((r) => r.pass && r.items.length === 0).length;
   return {
     tool: 'proofgate',
     ...meta,
-    summary: { error, warn, ruleRun: results.length, pass: passes.length },
+    summary: { error, warn, ruleRun: results.length, pass: passCount },
     verdict: error > 0 ? 'BLOCK' : 'PASS',
     items,
     passes,

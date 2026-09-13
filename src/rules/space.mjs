@@ -19,17 +19,20 @@ export default {
       if (!text) continue;
       if (latinOn) {
         let m;
+        let lastEnd = -1; // 相邻双向粘连（中a中）按一个边界报，不重复刷屏
         latRe.lastIndex = 0;
         while ((m = latRe.exec(text))) {
-          const cjk = m[1] || m[4];
-          const other = m[2] || m[3];
-          items.push({
-            code: 'SPACE-001', severity: 'warn', line: no,
-            excerpt: excerptAt(text, m.index, 2),
-            message: `中文「${cjk}」紧贴英文「${other}」`,
-            suggestion: '之间加一个空格（盘古之白）',
-          });
-          latRe.lastIndex = m.index + 1;
+          if (m.index > lastEnd) {
+            const cjk = m[1] || m[4];
+            const other = m[2] || m[3];
+            items.push({
+              code: 'SPACE-001', severity: 'warn', line: no,
+              excerpt: excerptAt(text, m.index, 2),
+              message: `中文「${cjk}」紧贴英文「${other}」`,
+              suggestion: '之间加一个空格（盘古之白）',
+            });
+            lastEnd = m.index + m[0].length - 1;
+          }
         }
       }
       if (digitOn) {
@@ -49,7 +52,7 @@ export default {
 
     return {
       items,
-      pass: `扫描 ${doc.textLines.length} 行，中西文边界无粘连`,
+      pass: `扫描 ${doc.textLines.length} 行，中西文边界粘连 ${items.length} 处`,
     };
   },
 };

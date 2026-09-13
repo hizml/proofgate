@@ -6,8 +6,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { parseMarkdown } from '../src/parse.mjs';
-import { DEFAULT_CONFIG } from '../src/config.mjs';
-import { buildReceipt } from '../src/receipt.mjs';
+import { DEFAULT_CONFIG, loadConfig } from '../src/config.mjs';
+import { buildReceipt, renderMarkdown } from '../src/receipt.mjs';
 import space from '../src/rules/space.mjs';
 import punc from '../src/rules/punc.mjs';
 import term from '../src/rules/term.mjs';
@@ -156,6 +156,102 @@ test('解析：带一对括号的 URL 完整抽取（评审 🔴2 回归）', ()
   assert.equal(doc.images[0].url, 'https://x.com/a_(b).png');
 });
 
+test('NUM：退化对象不报（评审 🟡4 回归：拥有/万）', () => {
+  const a = num.run(docOf('拥有 100万 的用户群体，后来拥有 50万 的活跃账号。'), cfg());
+  assert.equal(a.items.filter((i) => i.code === 'NUM-001').length, 0);
+  const b = num.run(docOf('去年利润 1万5，今年补贴 1万2。'), cfg());
+  assert.equal(b.items.filter((i) => i.code === 'NUM-001').length, 0);
+});
+
+test('NUM：单位换算面（亿/阿拉伯等价/成与百分比）', () => {
+  const eq = num.run(docOf('营收1.2亿，也就是营收 120,000,000 元'), cfg());
+  assert.equal(eq.items.filter((i) => i.code === 'NUM-001').length, 0);
+  const conflict = num.run(docOf('营收1.2亿，另一处说营收 130,000,000 元'), cfg());
+  assert.equal(conflict.items.filter((i) => i.code === 'NUM-001').length, 1);
+  const pctEq = num.run(docOf('转化率三成，即转化率30%'), cfg());
+  assert.equal(pctEq.items.filter((i) => i.code === 'NUM-001').length, 0);
+  const pctBad = num.run(docOf('转化率三成，但后文说转化率 40%'), cfg());
+  assert.equal(pctBad.items.filter((i) => i.code === 'NUM-001').length, 1);
+});
+
+test('loadConfig：坏配置显式抛错，不静默回退', () => {
+  assert.throws(() => loadConfig('/tmp/pg-definitely-missing.json', '/tmp'), /不存在/);
+  const bad = '/tmp/pg-bad.json';
+  fs.writeFileSync(bad, '{ nope');
+  assert.throws(() => loadConfig(bad, '/tmp'), /解析失败/);
+  fs.writeFileSync(bad, JSON.stringify({ termGroups: '中文' }));
+  assert.throws(() => loadConfig(bad, '/tmp'), /termGroups/);
+  fs.writeFileSync(bad, JSON.stringify({ sensWords: [''] }));
+  assert.throws(() => loadConfig(bad, '/tmp'), /sensWords/);
+  fs.unlinkSync(bad);
+});
+
+test('loadConfig：sensMode=replace 只用自定义词表', () => {
+  const p = '/tmp/pg-replace.json';
+  fs.writeFileSync(p, JSON.stringify({ sensMode: 'replace', sensWords: ['黑五类'] }));
+  const { config } = loadConfig(p, '/tmp');
+  fs.unlinkSync(p);
+  const r = sens.run(docOf('这是国家级品质的黑五类'), config);
+  assert.equal(r.items.length, 1);
+  assert.ok(r.items[0].message.includes('黑五类'));
+});
+
+test('回执：有违规时小结是中性统计，不自相矛盾（评审 🟡5 回归）', () => {
+  const doc = docOf('它是销量第一的');
+  const r = sens.run(doc, cfg());
+  const rec = buildReceipt({ file: 'a.md', version: '0.3.0', startedAt: '', durationMs: 1, configSource: '', noNet: true }, [
+    { rule: 'SENS', title: '', items: r.items, pass: r.pass },
+  ]);
+  const md = renderMarkdown(rec);
+  assert.ok(md.includes('命中 1 个词'));
+  assert.ok(!md.includes('0 命中'));
+  assert.equal(rec.summary.pass, 0); // 有违规的规则不计入"通过"
+});
+
+test('CLI：参数边界显式报错 exit 2（评审 🟡8 回归）', () => {
+  const bin = fileURLToPath(new URL('../bin/proofgate.mjs', import.meta.url));
+  const run = (...args) => spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8' });
+  assert.equal(run('check', '--only').status, 2);
+  assert.equal(run('check', '--only', '').status, 2);
+  assert.ok(run('check', '--only', 'nope', FIXTURE).stderr.includes('未知规则'));
+  assert.equal(run('check', FIXTURE, '--facts').status, 2);
+  assert.ok(run('check', FIXTURE, FIXTURE).stderr.includes('一次只查一个'));
+  assert.ok(run('check', FIXTURE, '--config', '/tmp/pg-missing.json').stderr.includes('不存在'));
+});
+
+test('解析：混用围栏不误关、CRLF 兼容（评审 🟡9 回归）', () => {
+  const mixed = docOf('```\ncode TODO\n~~~\nstill code\n```\n正文干净');
+  assert.equal(draft.run(mixed, cfg()).items.length, 0);
+  const crlf = docOf('销量第一，TODO 未删\r\n第二行\r\n');
+  assert.ok(sens.run(crlf, cfg()).items.length >= 1);
+  assert.equal(draft.run(crlf, cfg()).items.length, 1);
+});
+
+test('LINK：403→GET 回退可达', async () => {
+  const doc = docOf('[a](http://93.184.216.34/a)');
+  const fetcher = async (url, opts = {}) =>
+    opts.method === 'GET' ? { ok: true, status: 200 } : { ok: false, status: 403 };
+  const r = await link.run(doc, cfg(), ctxNet(fetcher));
+  assert.equal(r.items.length, 0);
+  assert.ok(r.pass.includes('1 个可达'));
+});
+
+test('CASE：minLength 配置生效', () => {
+  const doc = docOf('Abc 和 abc 是一个词');
+  assert.equal(caseRule.run(doc, cfg()).items.length, 1);
+  const c = cfg();
+  c.case.minLength = 6;
+  assert.equal(caseRule.run(doc, c).items.length, 0);
+});
+
+test('IMG：百分号编码路径、fragment、data URI（评审 🟡10 回归）', () => {
+  const imgsDir = path.join(path.dirname(FIXTURE), 'imgs');
+  fs.writeFileSync(path.join(imgsDir, '中文.png'), 'PNG');
+  const doc = docOf('![a](imgs/%E4%B8%AD%E6%96%87.png) ![b](imgs/exists.png#center) ![c](data:image/png;base64,xx)', FIXTURE);
+  const r = img.run(doc, cfg());
+  assert.equal(r.items.filter((i) => i.code === 'IMG-001').length, 0);
+});
+
 test('回执：有硬伤 BLOCK、exit 语义正确', () => {
   const results = [
     { rule: 'SENS', title: '', items: [{ code: 'SENS-001', severity: 'error', line: 3, excerpt: '', message: 'x', suggestion: '' }], pass: null },
@@ -192,14 +288,16 @@ test('FACT：三态映射与 blockOn 升级', () => {
   assert.ok(r2.items.find((i) => i.code === 'FACT-002').severity === 'error');
 });
 
-test('FACT：契约违规被抓（坏 status / 越界行号 / 摘录不在原文 / 缺证据）', () => {
+test('FACT：契约违规被抓（坏 status / 越界行号 / 摘录不在原文 / 缺证据 / 坏 kind / 缺顶层）', () => {
   const doc = docOf('只有一行正文', null);
-  const bad = (claim) => ({ tool: 'proofgate-verdict', schemaVersion: 1, file: null, claims: [claim] });
-  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'maybe' }) }).items[0].code === 'FACT-ERR');
+  const bad = (claim) => ({ tool: 'proofgate-verdict', schemaVersion: 1, checkedAt: '2026-09-13T00:00:00Z', file: null, claims: [claim] });
+  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'maybe' }) }).items[0].message.includes('status'));
   assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 99, quote: '一行正文', status: 'verified', evidence: [{ url: 'https://a' }] }) }).items[0].message.includes('越界'));
   assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '原文里没有这句', status: 'verified', evidence: [{ url: 'https://a' }] }) }).items[0].message.includes('quote'));
   assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'verified' }) }).items[0].message.includes('evidence'));
-  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'refuted' }) }).items[0].message.includes('evidence'));
+  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'facted', claim: 'x', line: 1, quote: '一行正文', status: 'verified', evidence: [{ url: 'https://a' }] }) }).items[0].message.includes('kind'));
+  const noTop = { claims: [{ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'verified', evidence: [{ url: 'https://a' }] }] };
+  assert.ok(facts.run(doc, cfg(), { verdict: noTop }).items.some((i) => i.message.includes('tool')));
   // 无 verdict = 跳过
   assert.equal(facts.run(doc, cfg(), {}).items.length, 0);
 });
@@ -215,7 +313,7 @@ test('CLI：facts-template 可解析、--facts 合并进回执', () => {
   const verdict = {
     tool: 'proofgate-verdict', schemaVersion: 1,
     file: path.resolve(FIXTURE),
-    checkedAt: '2026-09-08T00:00:00Z',
+    checkedAt: '2026-09-13T00:00:00Z',
     claims: [
       { id: 'c1', kind: 'fact', claim: '月活 320 万', line: 8, quote: '月活用户320万', status: 'verified', evidence: [{ url: 'https://example.com', note: '官方' }] },
       { id: 'c2', kind: 'fact', claim: '留存率口径', line: 10, quote: '用户留存三成', status: 'unfound', evidence: [] },

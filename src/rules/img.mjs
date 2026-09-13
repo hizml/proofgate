@@ -16,8 +16,13 @@ export default {
           suggestion: '补一句描述（无障碍 + 公众号图片摘要）',
         });
       }
+      if (/^data:/i.test(im.url)) continue; // data URI 不是文件引用
       if (!/^https?:/i.test(im.url)) {
-        const local = path.resolve(doc.dir, im.url.split('?')[0]);
+        // 剥 fragment/query + 百分号解码（编辑器常输出 imgs/%E4%B8%AD.png 形式）
+        const cleaned = im.url.split('#')[0].split('?')[0];
+        let decoded = cleaned;
+        try { decoded = decodeURIComponent(cleaned); } catch { /* 保留原样 */ }
+        const local = path.resolve(doc.dir, decoded);
         if (!fs.existsSync(local)) {
           items.push({
             code: 'IMG-001', severity: 'error', line: im.line,
@@ -28,6 +33,6 @@ export default {
       }
     }
     const n = doc.images.length;
-    return { items, pass: n ? `检查 ${n} 张图片，全部就位` : '文中无图片' };
+    return { items, pass: n ? `检查 ${n} 张图片，问题 ${items.length} 处` : '文中无图片' };
   },
 };

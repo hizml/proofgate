@@ -30,6 +30,6 @@ export default {
         }
       }
     }
-    return { items, pass: '无 TODO/备选/占位残留' };
+    return { items, pass: `残留标记 ${items.length} 处` };
   },
 };

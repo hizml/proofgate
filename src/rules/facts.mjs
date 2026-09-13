@@ -10,6 +10,9 @@ function normalize(s) {
 
 export function validateVerdict(verdict, doc) {
   const errs = [];
+  if (verdict?.tool !== 'proofgate-verdict') errs.push('顶层 tool 必须是 proofgate-verdict');
+  if (verdict?.schemaVersion !== 1) errs.push('顶层 schemaVersion 必须是 1');
+  if (typeof verdict?.checkedAt !== 'string' || !verdict.checkedAt.trim()) errs.push('顶层缺 checkedAt（ISO 时间）');
   const claims = verdict?.claims;
   const rawNorm = normalize(doc.raw);
   if (verdict?.file && verdict.file !== doc.filePath) {
@@ -22,10 +25,11 @@ export function validateVerdict(verdict, doc) {
   claims.forEach((c, i) => {
     const where = c?.id ? `claims[${c.id}]` : `claims[${i}]`;
     if (!c || typeof c.claim !== 'string' || !c.claim.trim()) errs.push(`${where}: 缺 claim`);
+    if (!c || (c.kind !== 'fact' && c.kind !== 'logic')) errs.push(`${where}: kind 必须是 fact 或 logic`);
     if (!c || typeof c.line !== 'number' || c.line < 1 || c.line > doc.lines.length) {
       errs.push(`${where}: line 越界（1-${doc.lines.length}）`);
     }
-    if (!c || !STATUS.has(c.status)) errs.push(`${where}: status 必须是 verified|dubious|unfound`);
+    if (!c || !STATUS.has(c.status)) errs.push(`${where}: status 必须是 verified|dubious|unfound|refuted`);
     if (!c || typeof c.quote !== 'string' || !c.quote.trim()) {
       errs.push(`${where}: 缺 quote`);
     } else if (!rawNorm.includes(normalize(c.quote))) {

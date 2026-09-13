@@ -1,12 +1,11 @@
 {
   "name": "proofgate",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "中文内容出厂质检员——出回执的确定性 lint，引擎零 LLM",
   "type": "module",
   "bin": {
     "proofgate": "bin/proofgate.mjs"
   },
-  "main": "src/parse.mjs",
   "engines": {
     "node": ">=18"
   },

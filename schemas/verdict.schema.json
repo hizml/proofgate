@@ -27,7 +27,7 @@
           },
           "evidence": {
             "type": "array",
-            "description": "verified/dubious 必须给证据；unfound 可空",
+            "description": "verified/refuted 必须给证据（缺了引擎打回）；dubious 建议在 note 说明原因；unfound 可空",
             "items": {
               "type": "object",
               "properties": {

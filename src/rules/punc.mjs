@@ -36,6 +36,6 @@ export default {
       }
     }
 
-    return { items, pass: `扫描 ${doc.textLines.length} 行，标点规范` };
+    return { items, pass: `扫描 ${doc.textLines.length} 行，标点问题 ${items.length} 处` };
   },
 };

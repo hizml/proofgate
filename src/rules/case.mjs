@@ -40,6 +40,6 @@ export default {
     }
 
     items.sort((a, b) => a.line - b.line);
-    return { items, pass: `英文标识 ${groups.size} 个，写法一致` };
+    return { items, pass: `英文标识 ${groups.size} 个，写法不一致 ${items.length} 组` };
   },
 };

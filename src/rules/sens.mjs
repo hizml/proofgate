@@ -55,8 +55,8 @@ export default {
   run(doc, cfg) {
     const words =
       cfg.sensMode === 'replace'
-        ? cfg.sensWords || []
-        : [...SENS_DEFAULT_WORDS, ...(cfg.sensWords || [])];
+        ? (cfg.sensWords || []).filter((w) => typeof w === 'string' && w.trim())
+        : [...SENS_DEFAULT_WORDS, ...(cfg.sensWords || []).filter((w) => typeof w === 'string' && w.trim())];
     if (!words.length) return { items: [], pass: '未配置词表，跳过' };
 
     const ac = buildAC(words.map((w) => w.toLowerCase()));
@@ -78,6 +78,6 @@ export default {
       suggestion: '按平台规范改写或删除（默认词表=广告法绝对化用语）',
     }));
 
-    return { items, pass: `敏感词扫描（${words.length} 词条）0 命中` };
+    return { items, pass: `敏感词扫描（${words.length} 词条），命中 ${items.length} 个词` };
   },
 };

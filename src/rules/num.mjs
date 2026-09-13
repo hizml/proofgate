@@ -48,7 +48,7 @@ function chengValue(s) {
 }
 
 function guessObject(before) {
-  const tail = before.slice(-12);
+  const tail = before.slice(-10);
   const m = tail.match(/([\u4e00-\u9fff]{1,8})\s*$/);
   if (!m) return null;
   let obj = m[1];
@@ -64,7 +64,8 @@ function guessObject(before) {
       if (obj.length > w.length && obj.endsWith(w)) { obj = obj.slice(0, -w.length); changed = true; break; }
     }
   }
-  return CJK_RE.test(obj) ? obj : null;
+  // 剥完剩单字（「拥有」→「拥」，「1万5」尾数的「万」）当指标太弱，宁漏勿误报
+  return CJK_RE.test(obj) && obj.length >= 2 ? obj : null;
 }
 
 export default {
@@ -82,11 +83,7 @@ export default {
       ARAB_RE.lastIndex = 0;
       while ((m = ARAB_RE.exec(text))) {
         if (!m[1]) continue;
-        const end = m.index + m[0].length;
-        if (TIME_AFTER_RE.test(text.slice(end))) {
-          ARAB_RE.lastIndex = end; // 日期/时刻数字不参与指标核对
-          continue;
-        }
+        if (TIME_AFTER_RE.test(text.slice(m.index + m[0].length))) continue; // 日期/时刻不参与指标核对
         const isPercent = Boolean(m[3]);
         const canon = canonical(m[1], m[2], isPercent);
         if (canon === null) continue;
@@ -95,7 +92,6 @@ export default {
           canon, display: m[1] + (m[2] || '') + (m[3] || ''), line: no,
           excerpt: excerptAt(text, m.index, m[0].length),
         });
-        ARAB_RE.lastIndex = m.index + m[0].length;
       }
       BAI_RE.lastIndex = 0;
       while ((m = BAI_RE.exec(text))) {
@@ -173,6 +169,6 @@ export default {
     }
 
     items.sort((a, b) => a.line - b.line);
-    return { items, pass: `抽取 ${mentions.length} 处数字，交叉核对无冲突` };
+    return { items, pass: `抽取 ${mentions.length} 处数字，冲突 ${items.length} 处` };
   },
 };

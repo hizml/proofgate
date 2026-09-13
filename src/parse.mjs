@@ -11,6 +11,7 @@ export function parseMarkdown(raw, filePath) {
   const links = [];
   const images = [];
   let inFence = false;
+  let fenceMarker = null; // CommonMark：闭合围栏须与开启标记同类（``` 不能被 ~~~ 关掉）
   let inFront = lines[0] !== undefined && lines[0].trim() === '---';
   // 未闭合的 frontmatter 把整篇当元数据吞掉会静默假 PASS——宁可当普通正文多查，不可吞文
   if (inFront && !lines.some((l, i) => i > 0 && l.trim() === '---')) inFront = false;
@@ -24,7 +25,15 @@ export function parseMarkdown(raw, filePath) {
       continue;
     }
     if (FENCE_RE.test(rawLine)) {
-      inFence = !inFence;
+      const marker = rawLine.trim().startsWith('```') ? '```' : '~~~';
+      if (!inFence) {
+        inFence = true;
+        fenceMarker = marker;
+      } else if (marker === fenceMarker) {
+        inFence = false;
+        fenceMarker = null;
+      }
+      // 异类标记行在围栏内当代码内容，不 toggle
       continue;
     }
     if (inFence) continue;

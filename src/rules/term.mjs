@@ -43,6 +43,6 @@ export default {
     }
 
     const checked = groups.length;
-    return { items, pass: checked ? `检查 ${checked} 组术语，写法统一` : '未配置术语组（termGroups），跳过' };
+    return { items, pass: checked ? `检查 ${checked} 组术语，混用 ${items.length} 组` : '未配置术语组（termGroups），跳过' };
   },
 };
