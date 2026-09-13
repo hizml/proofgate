@@ -5,7 +5,7 @@ import { loadConfig } from './config.mjs';
 import { RULES } from './rules/index.mjs';
 import { buildReceipt, renderMarkdown } from './receipt.mjs';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 
 const HELP = `proofgate v${VERSION} — 中文内容出厂质检员
 用法:

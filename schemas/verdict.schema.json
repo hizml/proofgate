@@ -22,8 +22,8 @@
           "line": { "type": "integer", "minimum": 1, "description": "断言在文章中的行号" },
           "quote": { "type": "string", "description": "原文摘录，必须能在文章原文中找到（空白不敏感）" },
           "status": {
-            "enum": ["verified", "dubious", "unfound"],
-            "description": "verified=已核实（须附证据）；dubious=存疑（有疑点但未证伪）；unfound=查无来源。logic 类 verified 表示已排查无矛盾"
+            "enum": ["verified", "dubious", "unfound", "refuted"],
+            "description": "verified=已核实（须附证据）；dubious=存疑（有疑点但未证伪）；unfound=查无来源；refuted=证伪（找到反证，须附证据，回执硬拦）。logic 类 verified 表示已排查无矛盾"
           },
           "evidence": {
             "type": "array",

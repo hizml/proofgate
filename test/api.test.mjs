@@ -149,14 +149,16 @@ test('FACT：三态映射与 blockOn 升级', () => {
       { id: 'c1', kind: 'fact', claim: '月活 320 万', line: 1, quote: '月活320万', status: 'verified', evidence: [{ url: 'https://example.com', note: '官方数据' }] },
       { id: 'c2', kind: 'fact', claim: '用户留存 30%', line: 2, quote: '用户留存三成', status: 'dubious', evidence: [{ note: '未找到官方口径' }] },
       { id: 'c3', kind: 'fact', claim: '90% 读者不看长文', line: 2, quote: '用户留存三成', status: 'unfound', evidence: [] },
+      { id: 'c4', kind: 'fact', claim: '官方定价为输入 $1/百万', line: 1, quote: '月活320万', status: 'refuted', evidence: [{ url: 'https://example.com/pricing', note: '官方价为 $0.075，文中数字为误记' }] },
       { id: 'l1', kind: 'logic', claim: '承诺三点疑似未兑现', line: 3, quote: '承诺讲三点', status: 'dubious', evidence: [{ line: 3, note: '下文仅两点' }] },
     ],
   };
   const r = facts.run(doc, cfg(), { verdict });
   const codes = r.items.map((i) => i.code).sort();
-  assert.deepEqual(codes, ['FACT-001', 'FACT-002', 'LOGIC-001']);
-  assert.ok(r.items.every((i) => i.severity === 'warn'));
-  assert.ok(r.pass.includes('1 已核实 / 1 存疑 / 1 查无来源'));
+  assert.deepEqual(codes, ['FACT-001', 'FACT-002', 'FACT-003', 'LOGIC-001']);
+  assert.equal(r.items.find((i) => i.code === 'FACT-003').severity, 'error');
+  assert.ok(r.items.filter((i) => i.code !== 'FACT-003').every((i) => i.severity === 'warn'));
+  assert.ok(r.pass.includes('1 已核实 / 1 存疑 / 1 查无来源 / 1 证伪'));
 
   const c2 = cfg();
   c2.facts.blockOn = ['unfound'];
@@ -171,6 +173,7 @@ test('FACT：契约违规被抓（坏 status / 越界行号 / 摘录不在原文
   assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 99, quote: '一行正文', status: 'verified', evidence: [{ url: 'https://a' }] }) }).items[0].message.includes('越界'));
   assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '原文里没有这句', status: 'verified', evidence: [{ url: 'https://a' }] }) }).items[0].message.includes('quote'));
   assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'verified' }) }).items[0].message.includes('evidence'));
+  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'refuted' }) }).items[0].message.includes('evidence'));
   // 无 verdict = 跳过
   assert.equal(facts.run(doc, cfg(), {}).items.length, 0);
 });

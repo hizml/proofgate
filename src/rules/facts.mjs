@@ -2,7 +2,7 @@
 // 引擎只做契约校验（字段/行号/原文摘录真实性）+ 三态映射排版，零 LLM。
 // 断言对错、证据真伪是 agent 的责任——回执上每条都带证据链，读者可验。
 
-const STATUS = new Set(['verified', 'dubious', 'unfound']);
+const STATUS = new Set(['verified', 'dubious', 'unfound', 'refuted']);
 
 function normalize(s) {
   return String(s).replace(/\s+/g, '');
@@ -31,8 +31,8 @@ export function validateVerdict(verdict, doc) {
     } else if (!rawNorm.includes(normalize(c.quote))) {
       errs.push(`${where}: quote 在原文中找不到（须逐字摘录）`);
     }
-    if (c && c.status === 'verified' && !Array.isArray(c.evidence)) {
-      errs.push(`${where}: verified 必须附 evidence`);
+    if (c && (c.status === 'verified' || c.status === 'refuted') && !Array.isArray(c.evidence)) {
+      errs.push(`${where}: ${c.status} 必须附 evidence（已核实/证伪都要给证据）`);
     }
     if (c && Array.isArray(c.evidence)) {
       for (const e of c.evidence) {
@@ -73,7 +73,7 @@ export default {
 
     const blockOn = new Set(cfg.facts?.blockOn || []);
     const items = [];
-    const counts = { verified: 0, dubious: 0, unfound: 0, logic: 0, logicFlagged: 0 };
+    const counts = { verified: 0, dubious: 0, unfound: 0, refuted: 0, logic: 0, logicFlagged: 0 };
 
     for (const c of claims) {
       if (c.kind === 'logic') {
@@ -89,6 +89,15 @@ export default {
       }
       counts[c.status] = (counts[c.status] || 0) + 1;
       if (c.status === 'verified') continue;
+      if (c.status === 'refuted') {
+        // 证伪=找到了反证，证据在手，直接硬拦
+        items.push({
+          code: 'FACT-003', severity: 'error', line: c.line, excerpt: c.quote,
+          message: `证伪断言：${c.claim}`,
+          suggestion: evidenceNote(c),
+        });
+        continue;
+      }
       items.push({
         code: c.status === 'dubious' ? 'FACT-001' : 'FACT-002',
         severity: blockOn.has(c.status) ? 'error' : 'warn',
@@ -99,7 +108,7 @@ export default {
     }
 
     const factTotal = claims.filter((c) => c.kind !== 'logic').length;
-    const pass = `断言 ${factTotal} 条：${counts.verified} 已核实 / ${counts.dubious} 存疑 / ${counts.unfound} 查无来源` +
+    const pass = `断言 ${factTotal} 条：${counts.verified} 已核实 / ${counts.dubious} 存疑 / ${counts.unfound} 查无来源 / ${counts.refuted} 证伪` +
       (counts.logic ? `；逻辑候选 ${counts.logic} 条（${counts.logicFlagged} 条待裁决）` : '');
     return { items, pass };
   },

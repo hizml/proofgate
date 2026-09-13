@@ -43,6 +43,7 @@ proofgate check article.md --json             # 机读 JSON
 | IMG-002 | 图片缺少 alt 文字 | 建议 |
 | FACT-001 | 存疑断言（agent 核查后回填） | 建议（可配 blockOn） |
 | FACT-002 | 查无来源断言 | 建议（可配 blockOn） |
+| FACT-003 | 证伪断言（找到反证） | 硬伤 |
 | LOGIC-001 | 逻辑矛盾候选 | 建议 |
 | FACT-ERR | verdict 契约违规 | 硬伤 |
 
