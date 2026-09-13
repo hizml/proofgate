@@ -1,16 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseMarkdown } from './parse.mjs';
-import { loadConfig } from './config.mjs';
+import { loadConfig, DEFAULT_CONFIG } from './config.mjs';
 import { RULES } from './rules/index.mjs';
 import { buildReceipt, renderMarkdown } from './receipt.mjs';
 
-export const VERSION = '0.2.1';
+export const VERSION = '0.2.2';
 
 const HELP = `proofgate v${VERSION} — 中文内容出厂质检员
 用法:
   proofgate check <file.md> [选项]
   proofgate facts-template <file.md>     生成语义层 verdict 骨架（agent 填写）
+  proofgate doctor                       引擎自检（埋雷夹具必须报出 + 干净样例必须放行）
 选项:
   --json            输出机读 JSON 回执
   --facts <path>    合并语义层 verdict.json（agent 核查结果）
@@ -22,6 +24,7 @@ const HELP = `proofgate v${VERSION} — 中文内容出厂质检员
 
 export async function runCheck(argv) {
   if (argv[0] === 'facts-template') return factsTemplate(argv.slice(1));
+  if (argv[0] === 'doctor') return doctor();
 
   let file = null;
   let json = false;
@@ -69,6 +72,26 @@ export async function runCheck(argv) {
   const doc = parseMarkdown(raw, absFile);
   const ctx = { fetchImpl: (...args) => fetch(...args), noNet, verdict };
 
+  const results = await runAllRules(doc, config, ctx, only);
+
+  const receipt = buildReceipt(
+    {
+      file: absFile,
+      version: VERSION,
+      startedAt: new Date(started).toISOString(),
+      durationMs: Date.now() - started,
+      configSource: source,
+      noNet,
+    },
+    results
+  );
+
+  console.log(json ? JSON.stringify(receipt, null, 2) : renderMarkdown(receipt));
+  return receipt.summary.error > 0 ? 1 : 0;
+}
+
+// 单条规则崩了不拖垮整张回执：变成 {RULE}-ERR 警告项，流水线看得见、其他规则照跑
+async function runAllRules(doc, config, ctx, only = null) {
   const results = [];
   for (const rule of RULES) {
     if (only && !only.has(rule.key)) continue;
@@ -87,21 +110,43 @@ export async function runCheck(argv) {
     }
     results.push({ rule: rule.id, title: rule.title, items, pass });
   }
+  return results;
+}
 
-  const receipt = buildReceipt(
-    {
-      file: absFile,
-      version: VERSION,
-      startedAt: new Date(started).toISOString(),
-      durationMs: Date.now() - started,
-      configSource: source,
-      noNet,
-    },
-    results
-  );
+// 引擎自证没坏：埋雷夹具该报的必须报出来，干净样例必须放行——双向都对才算活着
+async function doctor() {
+  const lines = [];
+  let failed = 0;
+  const mark = (pass) => (pass ? '[ok]' : (() => { failed++; return '[FAIL]'; })());
 
-  console.log(json ? JSON.stringify(receipt, null, 2) : renderMarkdown(receipt));
-  return receipt.summary.error > 0 ? 1 : 0;
+  const [major] = process.versions.node.split('.').map(Number);
+  lines.push(`${mark(major >= 18)} Node.js v${process.versions.node} (requires >=18)`);
+
+  const loaded = RULES.length >= 10 && RULES.every((r) => typeof r.run === 'function');
+  lines.push(`${mark(loaded)} 规则加载 ${RULES.length} 条（机械 9 + 语义 1）`);
+
+  const ctx = { fetchImpl: (...a) => fetch(...a), noNet: true, verdict: null };
+
+  try {
+    const fixture = fileURLToPath(new URL('../test/fixtures/article-with-issues.md', import.meta.url));
+    const docBad = parseMarkdown(fs.readFileSync(fixture, 'utf8'), fixture);
+    const rBad = buildReceipt({}, await runAllRules(docBad, DEFAULT_CONFIG, ctx));
+    const need = ['SPACE-001', 'PUNC-001', 'PUNC-002', 'TERM-001', 'SENS-001', 'NUM-001', 'CASE-001', 'DRAFT-001', 'IMG-001', 'IMG-002'];
+    const got = new Set(rBad.items.map((i) => i.code));
+    const missing = need.filter((c) => !got.has(c));
+    lines.push(`${mark(missing.length === 0 && rBad.summary.error >= 6)} 埋雷夹具：${rBad.summary.error} 硬伤 / ${rBad.summary.warn} 建议${missing.length ? `，缺规则码 ${missing.join(', ')}` : '，关键规则码齐全'}`);
+
+    const docGood = parseMarkdown('这是一篇干净的文章，标点规范、术语统一。\n\n数字只有一处：月活 320 万。\n', null);
+    const rGood = buildReceipt({}, await runAllRules(docGood, DEFAULT_CONFIG, ctx));
+    lines.push(`${mark(rGood.summary.error === 0 && rGood.verdict === 'PASS')} 干净样例：${rGood.summary.error} 硬伤 / ${rGood.summary.warn} 建议，${rGood.verdict === 'PASS' ? '放行' : '误拦'}`);
+  } catch (e) {
+    lines.push(`${mark(false)} 自检执行异常：${e.message}`);
+  }
+
+  lines.push('');
+  lines.push(failed ? `proofgate 自检失败：${failed} 项红灯——质检结果不可信，暂停当门禁并上报` : 'proofgate 自检通过');
+  console.log(lines.join('\n'));
+  return failed ? 1 : 0;
 }
 
 function factsTemplate(argv) {

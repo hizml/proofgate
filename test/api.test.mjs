@@ -203,8 +203,15 @@ test('CLI：facts-template 可解析、--facts 合并进回执', () => {
   assert.ok(run.stdout.includes('1 已核实'));
 });
 
-test('CLI 冒烟：夹具文章 exit 1，回执含各规则码；--json 可解析', () => {
+test('CLI 冒烟：doctor 自检全绿', () => {
   const bin = fileURLToPath(new URL('../bin/proofgate.mjs', import.meta.url));
+  const run = spawnSync(process.execPath, [bin, 'doctor'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  assert.ok(run.stdout.includes('自检通过'));
+  assert.ok(!run.stdout.includes('[FAIL]'));
+});
+
+test('CLI 冒烟：夹具文章 exit 1，回执含各规则码；--json 可解析', () => {  const bin = fileURLToPath(new URL('../bin/proofgate.mjs', import.meta.url));
   const run = spawnSync(process.execPath, [bin, 'check', FIXTURE, '--no-net'], { encoding: 'utf8' });
   assert.equal(run.status, 1);
   const out = run.stdout;

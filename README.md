@@ -7,6 +7,7 @@ proofgate check article.md                    # 机械层回执
 proofgate facts-template article.md           # 生成语义层 verdict 骨架（agent 填）
 proofgate check article.md --facts verdict.json  # 机械+语义合并回执
 proofgate check article.md --json             # 机读 JSON
+proofgate doctor                               # 引擎自检（埋雷必报+干净必放）
 ```
 
 ## 定位
