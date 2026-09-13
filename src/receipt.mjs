@@ -6,7 +6,7 @@ export function buildReceipt(meta, results) {
   const error = items.filter((i) => i.severity === 'error').length;
   const warn = items.filter((i) => i.severity === 'warn').length;
   const passes = results
-    .filter((r) => r.items.length === 0 && r.pass)
+    .filter((r) => r.pass)
     .map((r) => ({ rule: r.rule, summary: r.pass }));
   return {
     tool: 'proofgate',
@@ -37,7 +37,7 @@ export function renderMarkdown(rec) {
   if (!warns.length) L.push('无');
   for (const it of warns) L.push(itemLine(it, '△'));
 
-  L.push('', `## 通过 ${rec.summary.pass} 项`);
+  L.push('', `## 规则小结 ${rec.summary.pass} 项`);
   for (const p of rec.passes) L.push(`- ✓ ${p.rule} ${p.summary}`);
 
   L.push('', '## 结论');

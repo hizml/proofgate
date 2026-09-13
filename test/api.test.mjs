@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -16,6 +17,7 @@ import num from '../src/rules/num.mjs';
 import caseRule from '../src/rules/case.mjs';
 import draft from '../src/rules/draft.mjs';
 import img from '../src/rules/img.mjs';
+import facts from '../src/rules/facts.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/article-with-issues.md', import.meta.url));
 const cfg = () => structuredClone(DEFAULT_CONFIG);
@@ -136,6 +138,66 @@ test('回执：有硬伤 BLOCK、exit 语义正确', () => {
   const rec = buildReceipt({ file: 'a.md', version: '0.1.0', startedAt: '', durationMs: 1, configSource: '', noNet: true }, results);
   assert.equal(rec.verdict, 'BLOCK');
   assert.equal(rec.summary.error, 1);
+});
+
+test('FACT：三态映射与 blockOn 升级', () => {
+  const text = '第一段里说月活320万。\n第二段里说用户留存三成。\n第三段承诺讲三点。\n';
+  const doc = docOf(text, null);
+  const verdict = {
+    tool: 'proofgate-verdict', schemaVersion: 1, file: null, checkedAt: '2026-09-08T00:00:00Z',
+    claims: [
+      { id: 'c1', kind: 'fact', claim: '月活 320 万', line: 1, quote: '月活320万', status: 'verified', evidence: [{ url: 'https://example.com', note: '官方数据' }] },
+      { id: 'c2', kind: 'fact', claim: '用户留存 30%', line: 2, quote: '用户留存三成', status: 'dubious', evidence: [{ note: '未找到官方口径' }] },
+      { id: 'c3', kind: 'fact', claim: '90% 读者不看长文', line: 2, quote: '用户留存三成', status: 'unfound', evidence: [] },
+      { id: 'l1', kind: 'logic', claim: '承诺三点疑似未兑现', line: 3, quote: '承诺讲三点', status: 'dubious', evidence: [{ line: 3, note: '下文仅两点' }] },
+    ],
+  };
+  const r = facts.run(doc, cfg(), { verdict });
+  const codes = r.items.map((i) => i.code).sort();
+  assert.deepEqual(codes, ['FACT-001', 'FACT-002', 'LOGIC-001']);
+  assert.ok(r.items.every((i) => i.severity === 'warn'));
+  assert.ok(r.pass.includes('1 已核实 / 1 存疑 / 1 查无来源'));
+
+  const c2 = cfg();
+  c2.facts.blockOn = ['unfound'];
+  const r2 = facts.run(doc, c2, { verdict });
+  assert.ok(r2.items.find((i) => i.code === 'FACT-002').severity === 'error');
+});
+
+test('FACT：契约违规被抓（坏 status / 越界行号 / 摘录不在原文 / 缺证据）', () => {
+  const doc = docOf('只有一行正文', null);
+  const bad = (claim) => ({ tool: 'proofgate-verdict', schemaVersion: 1, file: null, claims: [claim] });
+  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'maybe' }) }).items[0].code === 'FACT-ERR');
+  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 99, quote: '一行正文', status: 'verified', evidence: [{ url: 'https://a' }] }) }).items[0].message.includes('越界'));
+  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '原文里没有这句', status: 'verified', evidence: [{ url: 'https://a' }] }) }).items[0].message.includes('quote'));
+  assert.ok(facts.run(doc, cfg(), { verdict: bad({ id: 'c1', kind: 'fact', claim: 'x', line: 1, quote: '一行正文', status: 'verified' }) }).items[0].message.includes('evidence'));
+  // 无 verdict = 跳过
+  assert.equal(facts.run(doc, cfg(), {}).items.length, 0);
+});
+
+test('CLI：facts-template 可解析、--facts 合并进回执', () => {
+  const bin = fileURLToPath(new URL('../bin/proofgate.mjs', import.meta.url));
+  const tplRun = spawnSync(process.execPath, [bin, 'facts-template', FIXTURE], { encoding: 'utf8' });
+  assert.equal(tplRun.status, 0);
+  const tpl = JSON.parse(tplRun.stdout);
+  assert.equal(tpl.tool, 'proofgate-verdict');
+  assert.equal(tpl.file, path.resolve(FIXTURE));
+
+  const verdict = {
+    tool: 'proofgate-verdict', schemaVersion: 1,
+    file: path.resolve(FIXTURE),
+    checkedAt: '2026-09-08T00:00:00Z',
+    claims: [
+      { id: 'c1', kind: 'fact', claim: '月活 320 万', line: 8, quote: '月活用户320万', status: 'verified', evidence: [{ url: 'https://example.com', note: '官方' }] },
+      { id: 'c2', kind: 'fact', claim: '留存率口径', line: 10, quote: '用户留存三成', status: 'unfound', evidence: [] },
+    ],
+  };
+  const vp = '/tmp/pg-verdict-test.json';
+  fs.writeFileSync(vp, JSON.stringify(verdict));
+  const run = spawnSync(process.execPath, [bin, 'check', FIXTURE, '--no-net', '--facts', vp], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  assert.ok(run.stdout.includes('FACT-002'));
+  assert.ok(run.stdout.includes('1 已核实'));
 });
 
 test('CLI 冒烟：夹具文章 exit 1，回执含各规则码；--json 可解析', () => {

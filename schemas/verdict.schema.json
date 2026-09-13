@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hizml/proofgate/schemas/verdict.schema.json",
+  "title": "proofgate 语义层 verdict 契约",
+  "description": "agent 对文章断言/逻辑矛盾的核查结果。引擎只校验此契约并排版进回执，不做任何语义判断。断言对错与证据真实性由 agent 负责。",
+  "type": "object",
+  "required": ["tool", "schemaVersion", "file", "checkedAt", "claims"],
+  "properties": {
+    "tool": { "const": "proofgate-verdict" },
+    "schemaVersion": { "const": 1 },
+    "file": { "type": "string", "description": "被核查文章的绝对路径，须与 check 传入的文件一致" },
+    "checkedAt": { "type": "string", "format": "date-time" },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "claim", "line", "quote", "status"],
+        "properties": {
+          "id": { "type": "string", "description": "断言唯一 id，如 c1/l1" },
+          "kind": { "enum": ["fact", "logic"], "description": "fact=事实断言核查；logic=前后矛盾/结构承诺候选" },
+          "claim": { "type": "string", "description": "断言的完整表述（agent 改写为可独立核对的陈述句）" },
+          "line": { "type": "integer", "minimum": 1, "description": "断言在文章中的行号" },
+          "quote": { "type": "string", "description": "原文摘录，必须能在文章原文中找到（空白不敏感）" },
+          "status": {
+            "enum": ["verified", "dubious", "unfound"],
+            "description": "verified=已核实（须附证据）；dubious=存疑（有疑点但未证伪）；unfound=查无来源。logic 类 verified 表示已排查无矛盾"
+          },
+          "evidence": {
+            "type": "array",
+            "description": "verified/dubious 必须给证据；unfound 可空",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string", "description": "证据链接（可点开验证）" },
+                "line": { "type": "integer", "description": "文内另一处位置（logic 类矛盾候选用）" },
+                "note": { "type": "string", "description": "一句话说明证据与断言的对应关系" }
+              },
+              "anyOf": [
+                { "required": ["url"] },
+                { "required": ["line"] },
+                { "required": ["note"] }
+              ]
+            }
+          },
+          "note": { "type": "string", "description": "可选备注" }
+        }
+      }
+    }
+  }
+}

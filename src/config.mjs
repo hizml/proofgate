@@ -22,6 +22,7 @@ export const DEFAULT_CONFIG = {
   link: { timeoutMs: 8000, concurrency: 8 },
   case: { minLength: 3 },
   num: { enabled: true },
+  facts: { blockOn: [] }, // 如 ['unfound'] 把查无来源升级为硬伤
 };
 
 export function loadConfig(configPath, startDir) {
@@ -48,6 +49,7 @@ export function loadConfig(configPath, startDir) {
     link: { ...DEFAULT_CONFIG.link, ...(user.link || {}) },
     case: { ...DEFAULT_CONFIG.case, ...(user.case || {}) },
     num: { ...DEFAULT_CONFIG.num, ...(user.num || {}) },
+    facts: { ...DEFAULT_CONFIG.facts, ...(user.facts || {}) },
     rules: { ...(user.rules || {}) },
     termGroups: user.termGroups !== undefined ? user.termGroups : DEFAULT_CONFIG.termGroups,
     sensWords: user.sensWords || [],
