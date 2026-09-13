@@ -12,6 +12,8 @@ export function parseMarkdown(raw, filePath) {
   const images = [];
   let inFence = false;
   let inFront = lines[0] !== undefined && lines[0].trim() === '---';
+  // 未闭合的 frontmatter 把整篇当元数据吞掉会静默假 PASS——宁可当普通正文多查，不可吞文
+  if (inFront && !lines.some((l, i) => i > 0 && l.trim() === '---')) inFront = false;
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
@@ -53,10 +55,11 @@ export function excerptAt(text, start, len = 0, radius = 14) {
 }
 
 function collectInline(text, line, links, images) {
-  const imgRe = /!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g;
+  // URL 支持一层成对括号（CommonMark 允许，维基类链接遍地都是）：(?:[^()\s]+|\([^()\s]*\))+
+  const imgRe = /!\[([^\]]*)\]\(((?:[^()\s]+|\([^()\s]*\))+)[^)]*\)/g;
   let m;
   while ((m = imgRe.exec(text))) images.push({ alt: m[1], url: m[2], line });
-  const linkRe = /(?<!\!)\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g;
+  const linkRe = /(?<!\!)\[([^\]]+)\]\(((?:[^()\s]+|\([^()\s]*\))+)[^)]*\)/g;
   while ((m = linkRe.exec(text))) links.push({ text: m[1], url: m[2], line });
 }
 

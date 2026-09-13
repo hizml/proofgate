@@ -119,7 +119,8 @@ test('LINK：200 通过、404 死链、超时降级 warn', async () => {
   const dead404 = mk({ ok: false, status: 404 }, { ok: false, status: 404 });
   const flaky = mk(() => Promise.reject(new Error('timeout')), () => Promise.reject(new Error('timeout')));
 
-  const doc = docOf('[a](https://a.com) [b](https://b.com) [c](https://c.com)');
+  // 用字面量公网 IP，避免测试依赖真实 DNS（SSRF 校验会对域名做 lookup）
+  const doc = docOf('[a](http://93.184.216.34/a) [b](http://93.184.216.34/b) [c](http://93.184.216.34/c)');
   assert.equal((await link.run(doc, cfg(), ctxNet(ok200))).items.length, 0);
   const r404 = await link.run(doc, cfg(), ctxNet(dead404));
   assert.equal(r404.items.length, 3);
@@ -128,6 +129,31 @@ test('LINK：200 通过、404 死链、超时降级 warn', async () => {
   assert.ok(rFlaky.items.every((i) => i.code === 'LINK-002'));
   // noNet 跳过
   assert.equal((await link.run(doc, cfg(), { fetchImpl: ok200, noNet: true })).items.length, 0);
+});
+
+test('LINK：私网/环回不探测、重定向跳内网逐跳拦截（评审 🔴3 回归）', async () => {
+  const doc = docOf('[a](http://127.0.0.1:8080/x) [b](http://192.168.31.1/admin) [c](http://93.184.216.34/ok) [d](http://93.184.216.34/hop)');
+  const fetcher = async (url) => {
+    if (url.includes('/hop')) return new Response(null, { status: 302, headers: { location: 'http://10.0.0.1/secret' } });
+    return new Response(null, { status: 200 });
+  };
+  const r = await link.run(doc, cfg(), ctxNet(fetcher));
+  assert.equal(r.items.filter((i) => i.code === 'LINK-003').length, 3);
+  assert.ok(r.pass.includes('1 个可达'));
+  assert.ok(r.pass.includes('SSRF'));
+});
+
+test('解析：未闭合 frontmatter 不吞正文（评审 🔴1 回归）', () => {
+  const r = sens.run(docOf('---\n全文销量第一，号称国家级。\n', null), cfg());
+  assert.ok(r.items.length >= 2);
+  const d = draft.run(docOf('---\nTODO 待删\n', null), cfg());
+  assert.equal(d.items.length, 1);
+});
+
+test('解析：带一对括号的 URL 完整抽取（评审 🔴2 回归）', () => {
+  const doc = docOf('看 [维基](https://en.wikipedia.org/wiki/Foo_(bar)) 和 ![图](https://x.com/a_(b).png)');
+  assert.equal(doc.links[0].url, 'https://en.wikipedia.org/wiki/Foo_(bar)');
+  assert.equal(doc.images[0].url, 'https://x.com/a_(b).png');
 });
 
 test('回执：有硬伤 BLOCK、exit 语义正确', () => {
