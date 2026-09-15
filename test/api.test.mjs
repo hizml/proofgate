@@ -132,7 +132,7 @@ test('LINK：200 通过、404 死链、超时降级 warn', async () => {
 });
 
 test('LINK：私网/环回不探测、重定向跳内网逐跳拦截（评审 🔴3 回归）', async () => {
-  const doc = docOf('[a](http://127.0.0.1:8080/x) [b](http://192.168.31.1/admin) [c](http://93.184.216.34/ok) [d](http://93.184.216.34/hop)');
+  const doc = docOf('[a](http://127.0.0.1:8080/x) [b](http://192.0.2.1/admin) [c](http://93.184.216.34/ok) [d](http://93.184.216.34/hop)');
   const fetcher = async (url) => {
     if (url.includes('/hop')) return new Response(null, { status: 302, headers: { location: 'http://10.0.0.1/secret' } });
     return new Response(null, { status: 200 });
